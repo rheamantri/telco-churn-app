@@ -6,13 +6,14 @@ import shap
 import os
 import matplotlib.pyplot as plt
 import plotly.express as px
-import seaborn as sns
 import streamlit.components.v1 as components
-from sklearn.metrics import (
-    confusion_matrix, 
-    classification_report, 
-    precision_recall_curve
-)
+from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve
+from xgboost import XGBClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 # ===============================================================
 # CONFIG & HELPER FUNCTIONS
@@ -20,30 +21,91 @@ from sklearn.metrics import (
 st.set_page_config(page_title="Telco Retention Engine", layout="wide")
 
 def st_shap(plot, height=None):
+    """Helper to display SHAP JS plots in Streamlit"""
     shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
     components.html(shap_html, height=height)
 
-@st.cache_resource
-def load_model():
-    return joblib.load('final_model.joblib')
+# ===============================================================
+# SELF-HEALING TRAINING LOGIC
+# ===============================================================
+def feature_engineer_robust(df):
+    """Replicated feature engineering for on-the-fly training"""
+    df_feat = df.copy()
+    internet_cols = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV', 'StreamingMovies']
+    mask_no_internet = df_feat['InternetService'] == 'No'
+    df_feat.loc[mask_no_internet, internet_cols] = 'No internet service'
+    mask_no_phone = df_feat['PhoneService'] == 'No'
+    df_feat.loc[mask_no_phone, 'MultipleLines'] = 'No phone service'
+    df_feat.loc[(df_feat['tenure'] < 0) | (df_feat['tenure'] > 120), 'tenure'] = np.nan
+    df_feat.loc[df_feat['MonthlyCharges'] < 0, 'MonthlyCharges'] = np.nan
+    df_feat['Tenure_Bucket'] = pd.cut(df_feat['tenure'], bins=[-1, 12, 24, 48, 80], labels=['0-1y', '1-2y', '2-4y', '4-6y+'])
+    df_feat['Service_Count'] = (df_feat[['PhoneService', 'MultipleLines', 'Partner', 'Dependents'] + internet_cols] == 'Yes').sum(axis=1)
+    df_feat['Avg_Historical_Charge'] = df_feat['TotalCharges'] / (df_feat['tenure'] + 1)
+    if 'PaymentMethod' in df_feat.columns:
+        df_feat['Payment_Simple'] = df_feat['PaymentMethod'].apply(lambda x: "Automatic" if "automatic" in x else "Manual")
+    return df_feat
 
-@st.cache_data
-def load_data():
-    X = pd.read_csv("X_test_data.csv")
-    y = pd.read_csv("y_test_data.csv")
-    return X, y.values.ravel()
+def retrain_model_on_fly():
+    """Trains the model specifically for the current environment"""
+    with st.spinner("⚠️ Version Mismatch Detected. Retraining model for this server... (This takes 10s)"):
+        # 1. Load
+        df = pd.read_csv("Churn_Telco.csv")
+        df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+        df['Churn_Target'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
+        
+        # 2. Engineer
+        df_final = feature_engineer_robust(df)
+        X = df_final.drop(columns=['customerID', 'Churn', 'Churn_Target'])
+        y = df_final['Churn_Target']
+        
+        # 3. Split
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+        
+        # 4. Pipeline
+        num_cols = X.select_dtypes(include='number').columns.tolist()
+        cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', SimpleImputer(strategy="median"), num_cols),
+                ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols)
+            ]
+        )
+        
+        pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+        model = Pipeline([
+            ('preprocessor', preprocessor),
+            ('classifier', XGBClassifier(objective='binary:logistic', eval_metric='auc', scale_pos_weight=pos_weight, random_state=42, n_jobs=-1))
+        ])
+        
+        model.fit(X_train, y_train)
+        
+        # 5. Save compatible version
+        joblib.dump(model, 'final_model.joblib')
+        X_test.to_csv("X_test_data.csv", index=False)
+        y_test.to_csv("y_test_data.csv", index=False)
+        
+        return model, X_test, y_test.values.ravel()
+
+@st.cache_resource
+def load_resources():
+    """Robust loader that handles version mismatches"""
+    try:
+        # Try loading existing files
+        model = joblib.load('final_model.joblib')
+        X_test = pd.read_csv("X_test_data.csv")
+        y_test = pd.read_csv("y_test_data.csv").values.ravel()
+        return model, X_test, y_test
+    except (FileNotFoundError, AttributeError, Exception) as e:
+        # If loading fails (e.g. Python version mismatch), Retrain!
+        return retrain_model_on_fly()
 
 # ===============================================================
 # APP LAYOUT
 # ===============================================================
 
-# 1. LOAD RESOURCES
-try:
-    model = load_model()
-    X_test, y_test = load_data()
-except FileNotFoundError:
-    st.error("Model or Data files not found. Please run 'train_and_save.py' first.")
-    st.stop()
+# 1. LOAD RESOURCES (ROBUST)
+model, X_test, y_test = load_resources()
 
 st.title("📡 Telco Customer Retention Command Center")
 
