@@ -117,7 +117,7 @@ st.title("📡 Telco Customer Retention Command Center")
 
 # 2. SIDEBAR: CONTROL PANEL
 st.sidebar.header("⚙️ Business Constraints")
-COST_FN = st.sidebar.number_input("Cost of Lost Customer (LTV $)", 100, 2000, 500, 50)
+COST_FN = st.sidebar.number_input("Cost of Lost Customer (LTV $)", 100, 2000, 200, 50)
 COST_FP = st.sidebar.number_input("Cost of Retention Offer ($)", 10, 200, 50, 5)
 st.sidebar.divider()
 st.sidebar.info("Adjust inputs to optimize the strategy.")

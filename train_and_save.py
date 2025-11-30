@@ -63,7 +63,7 @@ def feature_engineer_robust(df):
 # ===============================================================
 # 2. METRICS & COST EVALUATION (NEW)
 # ===============================================================
-def evaluate_and_save_metrics(model, X_test, y_test, cost_fn=500, cost_fp=50):
+def evaluate_and_save_metrics(model, X_test, y_test, cost_fn=200, cost_fp=50):
     print("\nCalculating Metrics & Cost Trade-offs...")
     y_probs = model.predict_proba(X_test)[:, 1]
     precisions, recalls, thresholds = precision_recall_curve(y_test, y_probs)
@@ -301,7 +301,7 @@ if __name__ == "__main__":
     # F. EVALUATE & PLOT
     # We first calculate the BEST threshold based on default costs ($500/$50)
     # This report is printed to console AND saved to text file
-    optimal_thr = evaluate_and_save_metrics(model, X_test, y_test, cost_fn=500, cost_fp=50)
+    optimal_thr = evaluate_and_save_metrics(model, X_test, y_test, cost_fn=200, cost_fp=50)
 
     # We pass this optimal threshold to the plotting function so the CM matches the report
     generate_model_plots(model, X_test, y_test, optimal_thr)
