@@ -35,14 +35,22 @@ Stakeholders don't trust "Black Box" predictions.
 ---
 
 ## 📸 How it Works
+There are 3 tabs: 
+1. **Strategy and Operations**
+<img width="1457" height="782" alt="image" src="https://github.com/user-attachments/assets/8be6fc09-c7fc-4907-b3df-9c0eefc7fa2e" />
+| The model recalculates the decision boundary instantly as you adjust business costs. | Customers are bucketed into "Critical" (Call them), "Target" (Discount them), and "Safe" (Ignore them).|
 
-| **1. Dynamic Cost Optimization** | **2. Actionable Segmentation** |
-|:<img width="1395" height="298" alt="image" src="https://github.com/user-attachments/assets/54a33e30-0807-41f2-8f44-101703e32d1e" />
-:|:<img width="1120" height="560" alt="image" src="https://github.com/user-attachments/assets/76080ca1-6c6a-43dc-a7cc-f80e18d3e802" />
-:|
-| The model recalculates the decision boundary instantly as you adjust business costs. | Customers are bucketed into "Critical" (Call them), "Target" (Discount them), and "Safe" (Ignore them). |
-| *<img width="1126" height="438" alt="image" src="https://github.com/user-attachments/assets/f1435da2-37ab-48af-aea8-82638999c1d8" />
-* |
+2. **Deep Dive Analysis**
+<img width="1454" height="741" alt="image" src="https://github.com/user-attachments/assets/7bfd1125-5ed3-4aa0-a173-59e50f6753ab" />
+
+3. Model & Lab EDA
+<img width="1434" height="764" alt="image" src="https://github.com/user-attachments/assets/26c36b05-d241-4e05-9d43-9bbcd56640d5" />
+<img width="1233" height="756" alt="image" src="https://github.com/user-attachments/assets/6cd519a1-b6db-4275-a705-56581048791b" />
+<img width="1247" height="761" alt="image" src="https://github.com/user-attachments/assets/b95def0c-b867-4e8d-ba3f-8ff45aadd03f" />
+
+
+
+
 
 ---
 
