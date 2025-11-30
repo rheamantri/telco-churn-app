@@ -117,7 +117,7 @@ COST_FP = st.sidebar.number_input("Cost of Retention Offer ($)", 10, 200, 50, 5)
 st.sidebar.divider()
 st.sidebar.info("Adjust inputs to optimize the strategy.")
 
-# 3. GLOBAL PREDICTIONS (Run Once)
+# 3. GLOBAL PREDICTIONS 
 if 'y_probs' not in st.session_state:
     st.session_state['y_probs'] = model.predict_proba(X_test)[:, 1]
 y_probs = st.session_state['y_probs']
@@ -262,7 +262,7 @@ with tab2:
 with tab3:
     st.header("🤖 Model Performance & EDA Gallery")
     
-    # Live Metrics (Calculated on the fly)
+    # Live Metrics 
     y_pred_current = (y_probs >= best_thr).astype(int)
     report = classification_report(y_test, y_pred_current, output_dict=True)
     m1, m2, m3, m4 = st.columns(4)
@@ -317,7 +317,7 @@ with tab3:
     st.subheader("3. Full EDA Gallery")
     all_files = os.listdir('.')
     
-    st.markdown("#### 📊 Categorical Churn Rates")
+    st.markdown("#### Categorical Churn Rates")
     cat_plots = [f for f in all_files if f.startswith('churn_rate_by_')]
     if cat_plots:
         cols = st.columns(2)
@@ -325,7 +325,7 @@ with tab3:
             with cols[i % 2]:
                 st.image(img_file, use_container_width=True)
     
-    st.markdown("#### 🎻 Numerical Distributions")
+    st.markdown("#### Numerical Distributions")
     num_plots = [f for f in all_files if f.startswith('violin_plot_')]
     if num_plots:
         cols = st.columns(2)
@@ -333,6 +333,6 @@ with tab3:
             with cols[i % 2]:
                 st.image(img_file, use_container_width=True)
     
-    st.markdown("#### 🔥 Correlations")
+    st.markdown("#### Correlations")
     if os.path.exists("heatmap_correlation.png"): 
         st.image("heatmap_correlation.png")
