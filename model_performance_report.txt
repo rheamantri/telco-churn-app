@@ -1,0 +1,28 @@
+
+============================================================
+   COST COMPARISON (FN=$200, FP=$50)
+============================================================
+Method          | Threshold  | Total Cost ($)  | Recall     | Precision 
+---------------------------------------------------------------------------
+Beta 1.0        | 0.4216     | $31,250.00      | 0.7433     | 0.5356
+Beta 1.5        | 0.2261     | $29,800.00      | 0.8396     | 0.4687
+Beta 2.0        | 0.0834     | $30,100.00      | 0.9305     | 0.4113
+MIN COST        | 0.2200     | $30,000.00      | 0.8396     | 0.4659
+---------------------------------------------------------------------------
+
+--- Classification Report at Cost-Optimal Threshold ---
+              precision    recall  f1-score   support
+
+           0       0.92      0.65      0.76      1035
+           1       0.47      0.84      0.60       374
+
+    accuracy                           0.70      1409
+   macro avg       0.69      0.75      0.68      1409
+weighted avg       0.80      0.70      0.72      1409
+
+
+--- Key Classification Metrics ---
+Sensitivity (Recall): 0.8396
+Precision: 0.4659
+Specificity: 0.6522
+All evaluation plots saved.
