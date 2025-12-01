@@ -296,7 +296,8 @@ if __name__ == "__main__":
     # E. Train
     num_cols = X.select_dtypes(include='number').columns.tolist()
     cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
-    if 'customerID' in cat_cols: cat_cols.remove('customerID')
+    if 'customerID' in cat_cols:
+        cat_cols.remove('customerID')
 
     preprocessor = ColumnTransformer(
         transformers=[
