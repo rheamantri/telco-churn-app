@@ -214,7 +214,7 @@ with tab1:
     st.subheader("📋 Actionable Customer List")
     c1, c2 = st.columns(2)
     with c1:
-        filter_segment = st.multiselect("Filter by Segment:", ['🔴 Critical Risk', '🟡 Target Zone'], default=['🔴 Critical Risk', '🟡 Target Zone'])
+        filter_segment = st.multiselect("Filter by Segment:", ['🔴 Critical Risk', '🟡 Target Zone', '🟢 Safe'], default=['🔴 Critical Risk', '🟡 Target Zone', '🟢 Safe'])
     with c2:
         filter_contract = st.multiselect("Filter by Contract:", results_df['Contract'].unique(), default=results_df['Contract'].unique())
 
@@ -284,18 +284,148 @@ with tab2:
     with col_prof1:
         st.info("High Risk Customers Pay More")
         fig_mc = px.bar(metric_df, x='Group', y='MonthlyCharges', color='Group', 
+                        labels={'MonthlyCharges': 'Average Monthly Charges ($)', 'Group': 'Group'},
                         color_discrete_map=custom_colors, text_auto='.2f')
-        fig_mc.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=0,b=0))
+        fig_mc.update_layout(bargap=0,
+                             showlegend=False,
+                             height=250,
+                             margin=dict(l=0,r=0,t=0,b=0),
+                             yaxis=dict(showgrid=False), xaxis=dict(showgrid=False)
+                             )
         st.plotly_chart(fig_mc, use_container_width=True)
     
     # 5. Plot Tenure
     with col_prof2:
         st.info("High Risk Customers have Lower Tenure")
         fig_ten = px.bar(metric_df, x='Group', y='tenure', color='Group', 
+                         labels={'tenure': 'Average Tenure', 'Group': 'Group'},
                          color_discrete_map=custom_colors, text_auto='.1f')
-        fig_ten.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=0,b=0))
+        fig_ten.update_layout(bargap=0, 
+                              showlegend=False, 
+                              height=250, 
+                              margin=dict(l=0,r=0,t=0,b=0),
+                              yaxis=dict(showgrid=False), xaxis=dict(showgrid=False)
+                              )
         st.plotly_chart(fig_ten, use_container_width=True)
+        fig_ten.update_xaxes(showgrid=False)
+        fig_ten.update_yaxes(showgrid=False)
   
+    # -----------------------------------------------------------
+    # Monthly Charges Line Distribution — High Risk Customers
+    # -----------------------------------------------------------
+    st.subheader("Monthly Charges Distribution — High Risk Customers")
+
+    # 1. User chooses the segment
+    segment_options = ["🔴 Critical Risk", "🟡 Target Zone", "🟢 Safe"]
+    selected_segment = st.selectbox("Choose Segment:", segment_options)
+
+    # 2. Map segment names to your rules
+    segment_filter_map = {
+    "🔴 Critical Risk": results_df['Segment'] == "🔴 Critical Risk",
+    "🟡 Target Zone": results_df['Segment'] == "🟡 Target Zone",
+    "🟢 Safe": results_df['Segment'] == "🟢 Safe"
+    }
+
+    # 3. Filter data
+    seg_df = results_df[segment_filter_map[selected_segment]].copy()
+    # Safety check
+    if len(seg_df) == 0:
+        st.warning(f"No customers found in segment: {selected_segment}")
+    else:
+        # 4. Sort values for smooth line shape
+        seg_sorted = seg_df.sort_values('MonthlyCharges').reset_index(drop=True)
+
+        # 5. Build line chart
+        fig_seg = px.line(
+            seg_sorted,
+            x=seg_sorted.index,
+            y='MonthlyCharges',
+            hover_data=['customerID', 'Contract', 'tenure', 'MonthlyCharges'],
+            labels={
+                'x': 'Customer Index (sorted by monthly charge)',
+                'MonthlyCharges': 'Monthly Charges ($)'
+            },
+            title=None
+        )
+
+        # 6. Styling
+        color_map = {
+            "🔴 Critical Risk": "#ff4d4f",
+            "🟡 Target Zone": "#f2c94c",
+            "🟢 Safe": "#6BE395"
+        }
+
+        fig_seg.update_traces(line=dict(color=color_map[selected_segment], width=3))
+
+        fig_seg.update_layout(
+            showlegend=False,
+            height=350,
+            margin=dict(l=0, r=0, t=10, b=0)
+        )
+        # Remove grid lines
+        fig_seg.update_xaxes(showgrid=False)
+        fig_seg.update_yaxes(showgrid=False)
+
+        st.plotly_chart(fig_seg, use_container_width=True)
+    
+    # -----------------------------------------------------------
+    # Tenure Distribution — Interactive Per Segment
+    # -----------------------------------------------------------
+
+    tenure_titles = {
+        "🔴 Critical Risk": "Tenure Distribution — Critical Risk Customers",
+        "🟡 Target Zone": "Tenure Distribution — Target Zone Customers",
+        "🟢 Safe": "Tenure Distribution — Safe Customers"
+    }
+
+    st.subheader(tenure_titles[selected_segment])
+
+    seg_df_ten = results_df[segment_filter_map[selected_segment]].copy()
+    seg_df_ten = seg_df_ten.dropna(subset=['tenure'])
+
+    if len(seg_df_ten) == 0:
+        st.warning(f"No customers found in segment: {selected_segment}")
+    else:
+        # Convert months → years
+        seg_df_ten["tenure_years"] = seg_df_ten["tenure"] / 12
+
+        # Dynamic text for hover
+        def format_tenure(x):
+            return f"{int(x)} months" if x < 12 else f"{x/12:.1f} years"
+
+        seg_df_ten["tenure_display"] = seg_df_ten["tenure"].apply(format_tenure)
+
+        seg_sorted_ten = seg_df_ten.sort_values('tenure').reset_index(drop=True)
+
+        fig_ten_line = px.line(
+            seg_sorted_ten,
+            x=seg_sorted_ten.index,
+            y='tenure_years',
+            hover_data={
+                'customerID': True,
+                'Contract': True,
+                'tenure_display': True,
+                'MonthlyCharges': True,
+                'tenure_years': False,
+                'tenure': False
+            },
+            labels={
+                'x': 'Customer Index (sorted by tenure)',
+                'tenure_years': 'Tenure (Years)'
+            }
+        )
+
+        fig_ten_line.update_traces(line=dict(color=color_map[selected_segment], width=3))
+        fig_ten_line.update_layout(
+            showlegend=False,
+            height=350,
+            margin=dict(l=0, r=0, t=10, b=0)
+        )
+        fig_ten_line.update_xaxes(showgrid=False)
+        fig_ten_line.update_yaxes(showgrid=False)
+
+        st.plotly_chart(fig_ten_line, use_container_width=True)
+
 
     st.divider()
     
