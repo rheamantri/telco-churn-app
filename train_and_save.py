@@ -18,6 +18,16 @@ from sklearn.metrics import (
     RocCurveDisplay,
     classification_report
 )
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(SCRIPT_DIR, "images")
+MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
+
+# Automatically create the folders
+os.makedirs(IMAGES_DIR, exist_ok=True)
+os.makedirs(MODELS_DIR, exist_ok=True)
+# ----------------
 
 # ===============================================================
 # 0. SETUP: ENSURE FILES SAVE TO CURRENT FOLDER
@@ -26,9 +36,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def save_plot(filename):
     """Helper to save plots to the script directory"""
-    filepath = os.path.join(SCRIPT_DIR, filename)
+    filepath = os.path.join(IMAGES_DIR, filename)  # Was SCRIPT_DIR
     plt.savefig(filepath)
-    print(f"Saved Plot: {filename}")
+    print(f"Saved Plot: {filepath}")
     plt.close()
 
 # ===============================================================
@@ -64,6 +74,7 @@ def feature_engineer_robust(df):
 # 2. METRICS & COST EVALUATION (NEW)
 # ===============================================================
 def evaluate_and_save_metrics(model, X_test, y_test, cost_fn=200, cost_fp=50):
+    X_test = X_test.drop(columns=['customerID'], errors='ignore')
     print("\nCalculating Metrics & Cost Trade-offs...")
     y_probs = model.predict_proba(X_test)[:, 1]
     precisions, recalls, thresholds = precision_recall_curve(y_test, y_probs)
@@ -186,6 +197,7 @@ def generate_eda_plots(df):
             save_plot(f"violin_plot_{col}_vs_churn.png")
 
 def generate_model_plots(model, X_test, y_test, optimal_thr=0.5):
+    X_test = X_test.drop(columns=['customerID'], errors='ignore')
     print("Generating Model Performance plots...")
     y_probs = model.predict_proba(X_test)[:, 1]
     
@@ -230,12 +242,16 @@ def generate_model_plots(model, X_test, y_test, optimal_thr=0.5):
     plt.figure(figsize=(10, 6))
     x = np.arange(len(decile_stats))
     width = 0.35
-    plt.bar(x - width/2, decile_stats['actual'], width, label='Actual Churn Rate', color='orange', alpha=0.8)
-    plt.bar(x + width/2, decile_stats['pred'], width, label='Predicted Prob', color='blue', alpha=0.6)
-    plt.xticks(x, decile_stats['decile'])
-    plt.legend()
+    plt.bar(x - width/2, decile_stats['actual'], width, label='Actual Churn Rate', color='red', alpha=0.8)
+    plt.bar(x + width/2, decile_stats['pred'], width, label='Predicted Probability', color='blue', alpha=0.6)
+    
+    # --- UPDATED AXIS LABELS HERE ---
     plt.xlabel("Risk Decile (0=Low, 9=High)")
     plt.title("Calibration: Actual vs Predicted by Decile")
+    plt.xticks(x, decile_stats['decile']) # Ensures bars line up with numbers
+    plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.3)
+    plt.tight_layout()
     save_plot("actual_vs_predicted_decile_plot.png")
 
     # 6. Confusion Matrix (at Optimal Threshold)
@@ -270,16 +286,17 @@ if __name__ == "__main__":
     generate_eda_plots(df_final)
 
     # D. Split & Save Data
-    X = df_final.drop(columns=['customerID', 'Churn', 'Churn_Target'])
+    X = df_final.drop(columns=['Churn', 'Churn_Target'])
     y = df_final['Churn_Target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
-    X_test.to_csv(os.path.join(SCRIPT_DIR, "X_test_data.csv"), index=False)
-    y_test.to_csv(os.path.join(SCRIPT_DIR, "y_test_data.csv"), index=False)
+    X_test.to_csv(os.path.join(MODELS_DIR, "X_test_data.csv"), index=False)
+    y_test.to_csv(os.path.join(MODELS_DIR, "y_test_data.csv"), index=False)
 
     # E. Train
     num_cols = X.select_dtypes(include='number').columns.tolist()
     cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+    if 'customerID' in cat_cols: cat_cols.remove('customerID')
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -295,8 +312,8 @@ if __name__ == "__main__":
     ])
 
     print("Training XGBoost Model...")
-    model.fit(X_train, y_train)
-    joblib.dump(model, os.path.join(SCRIPT_DIR, 'final_model.joblib'))
+    model.fit(X_train.drop(columns=['customerID'], errors='ignore'), y_train)
+    joblib.dump(model, os.path.join(MODELS_DIR, 'final_model.joblib'))
 
     # F. EVALUATE & PLOT
     # We first calculate the BEST threshold based on default costs ($500/$50)

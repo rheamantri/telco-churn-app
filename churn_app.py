@@ -15,6 +15,9 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+import os
+IMAGES_DIR = os.path.join(os.getcwd(), "images")
+MODELS_DIR = os.path.join(os.getcwd(), "models")
 
 # ===============================================================
 # CONFIG & HELPER FUNCTIONS
@@ -97,13 +100,12 @@ def retrain_model_on_fly():
 def load_resources():
     """Robust loader that handles version mismatches"""
     try:
-        # Try loading existing files
-        model = joblib.load('final_model.joblib')
-        X_test = pd.read_csv("X_test_data.csv")
-        y_test = pd.read_csv("y_test_data.csv").values.ravel()
+        # --- UPDATE PATHS HERE ---
+        model = joblib.load(os.path.join(MODELS_DIR, 'final_model.joblib'))
+        X_test = pd.read_csv(os.path.join(MODELS_DIR, "X_test_data.csv"))
+        y_test = pd.read_csv(os.path.join(MODELS_DIR, "y_test_data.csv")).values.ravel()
         return model, X_test, y_test
-    except (FileNotFoundError, AttributeError, Exception) as e:
-        # If loading fails (e.g. Python version mismatch), Retrain!
+    except:
         return retrain_model_on_fly()
 
 # ===============================================================
@@ -124,7 +126,7 @@ st.sidebar.info("Adjust inputs to optimize the strategy.")
 
 # 3. GLOBAL PREDICTIONS (Run Once)
 if 'y_probs' not in st.session_state:
-    st.session_state['y_probs'] = model.predict_proba(X_test)[:, 1]
+    st.session_state['y_probs'] = model.predict_proba(X_test.drop(columns=['customerID'], errors='ignore'))[:, 1]
 y_probs = st.session_state['y_probs']
 
 # 4. OPTIMIZATION ENGINE (Live Calculation)
@@ -216,8 +218,10 @@ with tab1:
         (results_df['Contract'].isin(filter_contract))
     ].sort_values('Churn_Prob', ascending=False)
 
+    cols = ['customerID', 'Segment', 'Churn_Prob', 'Action', 'tenure', 'MonthlyCharges', 'Contract', 'PaymentMethod']
+
     st.dataframe(
-        filtered_df[['Segment', 'Churn_Prob', 'Action', 'tenure', 'MonthlyCharges', 'Contract', 'PaymentMethod']],
+        filtered_df[cols],  # <--- Use the new list here
         use_container_width=True,
         column_config={
             "Churn_Prob": st.column_config.ProgressColumn("Risk Score", format="%.2f", min_value=0, max_value=1),
@@ -225,42 +229,152 @@ with tab1:
         }
     )
 
+    st.divider()
+    st.subheader("📥 Export Data")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        # Option 1: Download ONLY the filtered list (what they see on screen)
+        csv_filtered = filtered_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Filtered List (CSV)",
+            data=csv_filtered,
+            file_name="filtered_churn_risk.csv",
+            mime="text/csv",
+            help="Downloads only the rows currently shown in the table above."
+        )
+        
+    with col_dl2:
+        # Option 2: Download EVERYTHING (Full database with scores)
+        csv_full = results_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Full Customer Database (CSV)",
+            data=csv_full,
+            file_name="full_customer_risk_scores.csv",
+            mime="text/csv",
+            help="Downloads the entire dataset with Risk Scores and Segments for all customers."
+        )
+
 # ---------------------------------------------------------------
 # TAB 2: DEEP DIVE (The "Why")
 # ---------------------------------------------------------------
 with tab2:
+    # --- PART 1: SEGMENT PROFILER (The "Why" at a Macro Level) ---
     st.subheader("🕵️‍♀️ Segment Profiler")
     col_prof1, col_prof2 = st.columns(2)
     
+    # 1. Calculate Stats
     target_stats = results_df[results_df['Churn_Prob'] >= best_thr][['tenure', 'MonthlyCharges']].mean()
     safe_stats = results_df[results_df['Churn_Prob'] < best_thr][['tenure', 'MonthlyCharges']].mean()
     
+    # 2. Prepare Data for Plotly
+    metric_df = pd.DataFrame({'High Risk': target_stats, 'Safe': safe_stats}).T.reset_index()
+    metric_df.columns = ['Group', 'tenure', 'MonthlyCharges']
+    
+    # 3. Define Exact Colors
+    custom_colors = {"High Risk":"#F74E3E", "Safe":"#6BE395"}
+
+    # 4. Plot Monthly Charges
     with col_prof1:
         st.info("High Risk Customers Pay More")
-        metric_df = pd.DataFrame({'High Risk': target_stats, 'Safe': safe_stats}).T
-        st.bar_chart(metric_df['MonthlyCharges'])
+        fig_mc = px.bar(metric_df, x='Group', y='MonthlyCharges', color='Group', 
+                        color_discrete_map=custom_colors, text_auto='.2f')
+        fig_mc.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=0,b=0))
+        st.plotly_chart(fig_mc, use_container_width=True)
     
+    # 5. Plot Tenure
     with col_prof2:
         st.info("High Risk Customers have Lower Tenure")
-        st.bar_chart(metric_df['tenure'])
+        fig_ten = px.bar(metric_df, x='Group', y='tenure', color='Group', 
+                         color_discrete_map=custom_colors, text_auto='.1f')
+        fig_ten.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=0,b=0))
+        st.plotly_chart(fig_ten, use_container_width=True)
+  
 
     st.divider()
     
+    # --- PART 2: INDIVIDUAL DIAGNOSIS (The "Why" at a Micro Level) ---
     st.subheader("💡 Individual Customer Diagnosis (SHAP)")
-    if len(filtered_df) > 0:
-        selected_cust_id = st.selectbox("Select Customer Index:", filtered_df.index[:20])
+    
+    # Filter for High Risk customers only (Battleground + Critical)
+    high_risk_custom = results_df[results_df['Churn_Prob'] > best_thr]
+    
+    if len(high_risk_custom) > 0:
+        # A. Selector: Choose by Customer ID (Not Index)
+        selected_cust_id = st.selectbox("Select Customer ID:", high_risk_custom['customerID'].head(50).tolist())
+        
         if st.button("Analyze This Customer"):
             with st.spinner("Calculating Risk Factors..."):
+                
+                # B. Find the row index for this Customer ID
+                # We need the integer location (0, 1, 2) to grab the right SHAP values
+                loc_idx = results_df.index[results_df['customerID'] == selected_cust_id][0]
+                
+                # C. Prepare Data for SHAP (Drop ID first)
+                X_test_noid = X_test.drop(columns=['customerID'], errors='ignore')
+                
+                # D. Calculate SHAP Values
                 preprocessor = model.named_steps['preprocessor']
-                X_encoded = preprocessor.transform(X_test)
+                X_encoded = preprocessor.transform(X_test_noid)
                 feature_names = preprocessor.get_feature_names_out()
                 explainer = shap.TreeExplainer(model.named_steps['classifier'])
                 shap_values = explainer.shap_values(X_encoded)
                 
-                loc_idx = X_test.index.get_loc(selected_cust_id)
-                st.write(f"**Customer {selected_cust_id} Risk Score: {y_probs[loc_idx]:.1%}**")
-                st_shap(shap.force_plot(explainer.expected_value, shap_values[loc_idx,:], X_encoded[loc_idx,:], feature_names=feature_names), height=150)
+                # E. Extract Specific Data for this Customer
+                cust_shap = shap_values[loc_idx, :]
+                raw_row = X_test.iloc[loc_idx] # Contains the actual values (e.g., "Fiber Optic")
 
+                # F. Sort Risk Drivers by Impact
+                df_shap = pd.DataFrame({"Feature": feature_names, "Impact": cust_shap})
+                df_shap['Abs_Impact'] = df_shap['Impact'].abs()
+                df_shap = df_shap.sort_values("Abs_Impact", ascending=False)
+                top_risk = df_shap[df_shap['Impact'] > 0].head(3)
+                
+                # --- DISPLAY SECTION ---
+                
+                # 1. Risk Score Header
+                st.markdown(f"### 🛑 Risk Profile: Customer {selected_cust_id}")
+                st.write(f"Predicted Probability: **{y_probs[loc_idx]:.1%}**")
+
+                # 2. Top 3 Risk Factors (Red Boxes with Values)
+                cols = st.columns(3)
+                for i, (idx, row) in enumerate(top_risk.iterrows()):
+                    # Clean the feature name (remove technical prefixes)
+                    feat_name = row['Feature']
+                    clean_feat = feat_name.replace("cat__", "").replace("num__", "")
+                    
+                    # Find the Actual Value in the raw data
+                    val = "N/A"
+                    # Try exact match first
+                    if clean_feat in raw_row:
+                        val = raw_row[clean_feat]
+                    else:
+                        # Try fuzzy match (e.g., "Contract_Month-to-month" -> "Contract")
+                        for col in X_test.columns:
+                            if clean_feat.startswith(col):
+                                val = raw_row[col]
+                                break
+                    
+                    # Format numbers nicely
+                    if isinstance(val, (float, int)):
+                        val = f"{val:.2f}"
+                    
+                    # Display the Red Box
+                    with cols[i]:
+                        st.error(f"**{clean_feat}**\n\nValue: **{val}**")
+
+                # 3. Full Customer Profile Table
+                st.write("**Full Customer Profile:**")
+                st.dataframe(raw_row.to_frame().T, use_container_width=True)
+
+                # 4. The SHAP Plot
+                st.caption("Technical Decision Path:")
+                st_shap(shap.force_plot(explainer.expected_value, cust_shap, X_encoded[loc_idx,:], feature_names=feature_names), height=150)
+    else:
+        st.success("No High Risk customers found at the current threshold!")# ---------------------------------------------------------------
+# TAB 3: MODEL LAB (Performance & Trust)
+# ---------------------------------------------------------------
 # ---------------------------------------------------------------
 # TAB 3: MODEL LAB (Performance & Trust)
 # ---------------------------------------------------------------
@@ -308,36 +422,68 @@ with tab3:
 
     st.divider()
 
-    st.subheader("2. Static Artifacts (Model Quality)")
-    col_img1, col_img2 = st.columns(2)
-    with col_img1:
-        if os.path.exists("roc_curve.png"): st.image("roc_curve.png", caption="ROC Curve (Invariant)")
-        if os.path.exists("calibration_curve.png"): st.image("calibration_curve.png", caption="Calibration Curve")
-    with col_img2:
-        if os.path.exists("actual_vs_predicted_decile_plot.png"): st.image("actual_vs_predicted_decile_plot.png", caption="Risk Decile Calibration")
-        if os.path.exists("feature_importance.png"): st.image("feature_importance.png", caption="Global Feature Importance")
+    st.subheader("2. Static Artifacts (From Training)")
+    st.caption("These plots were generated during the last model training run.")
+    
+    # Helper to load images safely
+    def show_img(name, col, label):
+        # Look in images folder first, then root
+        paths = [os.path.join(IMAGES_DIR, name), name]
+        for p in paths:
+            if os.path.exists(p):
+                col.image(p, caption=label, use_container_width=True)
+                return
+
+    # Layout: 3 Columns for better visibility
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        show_img("roc_curve.png", st, "ROC Curve (Model Power)")
+        show_img("calibration_curve.png", st, "Calibration Curve (Reliability)")
+        show_img("probability_distribution.png", st, "Probability Distribution (Separation)") # <--- ADDED
+        
+    with c2:
+        show_img("feature_importance.png", st, "Global Feature Importance")
+        show_img("actual_vs_predicted_decile_plot.png", st, "Actual vs Predicted by Decile")
+        show_img("threshold_metrics.png", st, "Static Threshold Metrics") # <--- ADDED
 
     st.divider()
     
     st.subheader("3. Full EDA Gallery")
-    all_files = os.listdir('.')
     
-    st.markdown("#### 📊 Categorical Churn Rates")
-    cat_plots = [f for f in all_files if f.startswith('churn_rate_by_')]
-    if cat_plots:
-        cols = st.columns(2)
-        for i, img_file in enumerate(cat_plots):
-            with cols[i % 2]:
-                st.image(img_file, use_container_width=True)
-    
-    st.markdown("#### 🎻 Numerical Distributions")
-    num_plots = [f for f in all_files if f.startswith('violin_plot_')]
-    if num_plots:
-        cols = st.columns(2)
-        for i, img_file in enumerate(num_plots):
-            with cols[i % 2]:
-                st.image(img_file, use_container_width=True)
-    
-    st.markdown("#### 🔥 Correlations")
-    if os.path.exists("heatmap_correlation.png"): 
-        st.image("heatmap_correlation.png")
+    # Collect all images
+    all_imgs = []
+    if os.path.exists(IMAGES_DIR):
+        all_imgs.extend([os.path.join(IMAGES_DIR, f) for f in os.listdir(IMAGES_DIR) if f.endswith('.png')])
+    if not all_imgs:
+        all_imgs.extend([f for f in os.listdir('.') if f.endswith('.png')])
+
+    # List of files we ALREADY displayed above so we don't duplicate them
+    shown_files = [
+        "roc_curve.png", "calibration_curve.png", "feature_importance.png", 
+        "actual_vs_predicted_decile_plot.png", "probability_distribution.png", 
+        "threshold_metrics.png", "confusion_matrix_optimized.png"
+    ]
+
+    if all_imgs:
+        # 1. Categorical Plots
+        cat_imgs = [img for img in all_imgs if "churn_rate_by_" in img]
+        if cat_imgs:
+            st.markdown("#### 📊 Categorical Churn Rates")
+            cols = st.columns(2)
+            for i, img in enumerate(cat_imgs):
+                cols[i % 2].image(img, caption=os.path.basename(img).replace("churn_rate_by_", "").replace(".png", ""), use_container_width=True)
+
+        # 2. Numerical Plots
+        num_imgs = [img for img in all_imgs if "violin_plot_" in img]
+        if num_imgs:
+            st.markdown("#### 🎻 Numerical Distributions")
+            cols = st.columns(2)
+            for i, img in enumerate(num_imgs):
+                cols[i % 2].image(img, caption=os.path.basename(img).replace("violin_plot_", "").replace(".png", ""), use_container_width=True)
+
+        # 3. Heatmap
+        heatmap_file = next((img for img in all_imgs if "heatmap_correlation.png" in img), None)
+        if heatmap_file:
+            st.markdown("#### 🔥 Correlations")
+            st.image(heatmap_file, caption="Feature Correlation Heatmap")
