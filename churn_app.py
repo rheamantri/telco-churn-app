@@ -286,7 +286,7 @@ with tab2:
         fig_mc = px.bar(metric_df, x='Group', y='MonthlyCharges', color='Group', 
                         labels={'MonthlyCharges': 'Average Monthly Charges ($)', 'Group': 'Group'},
                         color_discrete_map=custom_colors, text_auto='.2f')
-        fig_mc.update_layout(bargap=0,
+        fig_mc.update_layout(bargap=0.1,
                              showlegend=False,
                              height=250,
                              margin=dict(l=0,r=0,t=0,b=0),
