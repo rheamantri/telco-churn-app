@@ -15,7 +15,6 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-import os
 IMAGES_DIR = os.path.join(os.getcwd(), "images")
 MODELS_DIR = os.path.join(os.getcwd(), "models")
 
@@ -64,7 +63,8 @@ def retrain_model_on_fly():
         
         # 2. Engineer
         df_final = feature_engineer_robust(df)
-        X = df_final.drop(columns=['customerID', 'Churn', 'Churn_Target'])
+        #X = df_final.drop(columns=['customerID', 'Churn', 'Churn_Target'])
+        X = df_final.drop(columns=['Churn', 'Churn_Target'])
         y = df_final['Churn_Target']
         
         # 3. Split
@@ -73,6 +73,8 @@ def retrain_model_on_fly():
         # 4. Pipeline
         num_cols = X.select_dtypes(include='number').columns.tolist()
         cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        if 'customerID' in cat_cols: 
+            cat_cols.remove('customerID')
         
         preprocessor = ColumnTransformer(
             transformers=[
@@ -87,12 +89,13 @@ def retrain_model_on_fly():
             ('classifier', XGBClassifier(objective='binary:logistic', eval_metric='auc', scale_pos_weight=pos_weight, random_state=42, n_jobs=-1))
         ])
         
-        model.fit(X_train, y_train)
+        #model.fit(X_train, y_train)
+        model.fit(X_train.drop(columns=['customerID'], errors='ignore'), y_train)
         
         # 5. Save compatible version
-        joblib.dump(model, 'final_model.joblib')
-        X_test.to_csv("X_test_data.csv", index=False)
-        y_test.to_csv("y_test_data.csv", index=False)
+        joblib.dump(model, os.path.join(MODELS_DIR, 'final_model.joblib'))
+        X_test.to_csv(os.path.join(MODELS_DIR, "X_test_data.csv"), index=False)
+        y_test.to_csv(os.path.join(MODELS_DIR, "y_test_data.csv"), index=False)
         
         return model, X_test, y_test.values.ravel()
 
@@ -125,8 +128,10 @@ st.sidebar.divider()
 st.sidebar.info("Adjust inputs to optimize the strategy.")
 
 # 3. GLOBAL PREDICTIONS (Run Once)
+X_test_noid = X_test.drop(columns=['customerID'], errors='ignore')
+
 if 'y_probs' not in st.session_state:
-    st.session_state['y_probs'] = model.predict_proba(X_test.drop(columns=['customerID'], errors='ignore'))[:, 1]
+    st.session_state['y_probs'] = model.predict_proba(X_test_noid)[:, 1]
 y_probs = st.session_state['y_probs']
 
 # 4. OPTIMIZATION ENGINE (Live Calculation)
