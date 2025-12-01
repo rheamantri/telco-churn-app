@@ -188,13 +188,37 @@ def generate_eda_plots(df):
     # 3. Violins
     plot_df = df.copy()
     plot_df['Churn_Label'] = plot_df['Churn_Target'].apply(lambda x: 'Yes' if x==1 else 'No')
-    for col in ['tenure', 'MonthlyCharges', 'TotalCharges']:
+    numerical_cols_to_plot = ['MonthlyCharges', 'TotalCharges']
+    if 'tenure' in plot_df.columns:
+        # Create the new column: Months / 12
+        plot_df['Tenure_Years'] = plot_df['tenure'] / 12
+        numerical_cols_to_plot.insert(0, 'Tenure_Years')
+    
+    for col in numerical_cols_to_plot:
+        if col in plot_df.columns:
+            plt.figure(figsize=(8, 5))
+            sns.violinplot(x='Churn_Label', y=col, data=plot_df, palette="muted", hue='Churn_Label', legend=False)
+            
+            # --- DYNAMIC LABELS FOR YEARS ---
+            if col == 'Tenure_Years':
+                plot_title = "Distribution of Tenure (Years) by Churn"
+                y_label = "Tenure (Years)"
+            else:
+                plot_title = f"Distribution of {col} by Churn"
+                y_label = col
+            
+            plt.title(plot_title)
+            plt.ylabel(y_label)
+            plt.tight_layout()
+            save_plot(f"violin_plot_{col}_vs_churn.png")
+            
+    """for col in ['tenure', 'MonthlyCharges', 'TotalCharges']:
         if col in plot_df.columns:
             plt.figure(figsize=(8, 5))
             sns.violinplot(x='Churn_Label', y=col, data=plot_df, palette="muted", hue='Churn_Label', legend=False)
             plt.title(f"Distribution of {col} by Churn")
             plt.tight_layout()
-            save_plot(f"violin_plot_{col}_vs_churn.png")
+            save_plot(f"violin_plot_{col}_vs_churn.png")"""
 
 def generate_model_plots(model, X_test, y_test, optimal_thr=0.5):
     X_test = X_test.drop(columns=['customerID'], errors='ignore')
