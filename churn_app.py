@@ -438,8 +438,9 @@ with tab2:
     if len(high_risk_custom) > 0:
         # A. Selector: Choose by Customer ID (Not Index)
         selected_cust_id = st.selectbox("Select Customer ID:", high_risk_custom['customerID'].head(50).tolist())
-        
-        if st.button("Analyze This Customer"):
+        st.button("Analyze This Customer", disabled=True)
+
+        if False:
             with st.spinner("Calculating Risk Factors..."):
                 
                 # B. Find the row index for this Customer ID
